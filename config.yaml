@@ -1,0 +1,43 @@
+# Real-Time Transcription Tool Configuration
+
+# Audio Recording Settings
+audio:
+  sample_rate: 16000  # Sample rate in Hz (16000 is optimal for Whisper)
+  channels: 1  # Mono audio
+  dtype: "float32"  # Audio data type
+  output_file: "test_audio.wav"  # Default output file for saved recordings
+
+# Whisper Model Settings
+model:
+  size: "large-v2"  # Options: tiny, base, small, medium, large-v2, large-v3
+  device: "cuda"  # "cpu" or "cuda" (for GPU acceleration)
+  compute_type: "float16"  # Options: int8, float16, float32
+  language: "en"  # Language code (e.g., "en", "es", "fr", "de", "auto" for auto-detect)
+  beam_size: 5  # Beam search size for decoding
+
+# Keyboard Shortcut Settings
+keyboard:
+  modifier_key: "alt"  # Modifier key: "alt", "ctrl", "shift", or "super"
+  trigger_key: "w"  # Trigger key (single character)
+  # Note: Press and hold modifier+trigger to record, release to transcribe
+
+# Application Settings
+app:
+  verbose: true  # Show detailed output
+  save_recordings: false  # Save recordings to file
+  cleanup_temp_files: true  # Clean up temporary files after transcription
+
+# Text Insertion Settings
+text_insertion:
+  enabled: true  # Enable automatic text insertion at cursor position
+  method: "direct"  # "direct" (type character by character) or "clipboard" (use Ctrl+V)
+  typing_delay: 0.01  # Delay between keystrokes in seconds (for reliability)
+  auto_capitalize: true  # Automatically capitalize first letter
+  add_period: false  # Add period at end if text doesn't end with punctuation
+
+# Visual Indicator Settings
+visual_indicator:
+  enabled: true  # Enable visual feedback when recording
+  show_notifications: true  # Show desktop notifications
+  show_console_indicator: true  # Show animated console indicator
+
