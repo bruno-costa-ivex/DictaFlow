@@ -52,4 +52,3 @@ Edit `config.yaml` to customize:
 - Device (cpu or cuda)
 - Keyboard shortcuts
 - Text insertion settings
-- Visual indicator

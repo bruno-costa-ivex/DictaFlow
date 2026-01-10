@@ -35,9 +35,3 @@ text_insertion:
   auto_capitalize: true  # Automatically capitalize first letter
   add_period: false  # Add period at end if text doesn't end with punctuation
 
-# Visual Indicator Settings
-visual_indicator:
-  enabled: true  # Enable visual feedback when recording
-  show_notifications: true  # Show desktop notifications
-  show_console_indicator: true  # Show animated console indicator
-
