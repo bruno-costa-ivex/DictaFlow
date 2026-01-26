@@ -9,9 +9,9 @@ audio:
 
 # Whisper Model Settings
 model:
-  size: "large-v2"  # Options: tiny, base, small, medium, large-v2, large-v3
-  device: "cuda"  # "cpu" or "cuda" (for GPU acceleration)
-  compute_type: "float16"  # Options: int8, float16, float32
+  size: "base"  # Options: tiny, base, small, medium, large-v2, large-v3
+  device: "cpu"  # "cpu" or "cuda" (for GPU acceleration)
+  compute_type: "int8"  # Options: int8, float16, float32
   language: "en"  # Language code (e.g., "en", "es", "fr", "de", "auto" for auto-detect)
   beam_size: 5  # Beam search size for decoding
 
@@ -34,4 +34,12 @@ text_insertion:
   typing_delay: 0.01  # Delay between keystrokes in seconds (for reliability)
   auto_capitalize: true  # Automatically capitalize first letter
   add_period: false  # Add period at end if text doesn't end with punctuation
+
+# Desktop Notification Settings
+notifications:
+  enabled: true  # Enable/disable all notifications
+  on_recording_start: true  # Show notification when recording starts
+  on_recording_stop: true  # Show notification when recording stops
+  on_transcription_complete: true  # Show notification with transcription preview
+  preview_length: 100  # Maximum characters to show in transcription preview
 

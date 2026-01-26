@@ -69,6 +69,7 @@ from audio_recorder import AudioRecorder
 from transcriber import Transcriber
 from keyboard_handler import KeyboardHandler
 from text_inserter import TextInserter
+from notifier import Notifier
 
 
 class TranscriptionApp:
@@ -121,15 +122,36 @@ class TranscriptionApp:
         else:
             self.text_inserter = None
             self.text_insertion_enabled = False
-        
+
+        # Initialize notifier if enabled
+        self.notifications_config = self.config.get('notifications', {})
+        if self.notifications_config.get('enabled', True):
+            self.notifier = Notifier(enabled=True)
+        else:
+            self.notifier = None
+
         self.app_config = app_cfg
     
     def _on_recording_start(self):
         """Callback when recording should start."""
         self.recorder.start_recording()
+
+        # Send notification if enabled
+        if self.notifier and self.notifications_config.get('on_recording_start', True):
+            try:
+                self.notifier.notify_recording_started()
+            except Exception:
+                pass  # Don't let notification failures affect recording
     
     def _on_recording_stop(self):
         """Callback when recording should stop."""
+        # Send notification if enabled
+        if self.notifier and self.notifications_config.get('on_recording_stop', True):
+            try:
+                self.notifier.notify_recording_stopped()
+            except Exception:
+                pass  # Don't let notification failures affect processing
+
         self._process_recording()
     
     def _process_recording(self):
@@ -178,7 +200,18 @@ class TranscriptionApp:
                     print("✅ Text inserted!")
                 except Exception as e:
                     print(f"⚠️  Error inserting text: {e}")
-            
+
+            # Send transcription complete notification if enabled
+            if self.notifier and self.notifications_config.get('on_transcription_complete', True):
+                try:
+                    preview_length = self.notifications_config.get('preview_length', 100)
+                    self.notifier.notify_transcription_complete(
+                        transcribed_text,
+                        max_preview_length=preview_length
+                    )
+                except Exception:
+                    pass  # Don't let notification failures affect the workflow
+
             # Clean up temporary file if configured
             if self.app_config.get('cleanup_temp_files', True):
                 try:
@@ -200,6 +233,8 @@ class TranscriptionApp:
         print(f"Release {modifier}+{trigger} to stop and transcribe")
         if self.text_insertion_enabled:
             print("📝 Transcribed text will be inserted at cursor position")
+        if self.notifier:
+            print("🔔 Desktop notifications enabled")
         print("Press Ctrl+C to exit")
         print("=" * 60)
         

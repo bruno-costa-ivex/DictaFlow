@@ -96,7 +96,12 @@ class Config:
     def app(self) -> Dict[str, Any]:
         """Get application configuration."""
         return self.config.get('app', {})
-    
+
+    @property
+    def notifications(self) -> Dict[str, Any]:
+        """Get notifications configuration."""
+        return self.config.get('notifications', {})
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key path (e.g., 'audio.sample_rate')."""
         keys = key.split('.')

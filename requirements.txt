@@ -16,3 +16,6 @@ PyYAML>=6.0
 # Text insertion (optional, for clipboard method)
 pyperclip>=1.8.2
 
+# Desktop notifications
+desktop-notifier>=5.0.0
+
