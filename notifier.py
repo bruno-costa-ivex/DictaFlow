@@ -20,6 +20,13 @@ class Notifier:
 
     APP_NAME = "DictaFlow"
 
+    # Visual wave patterns using Unicode block characters
+    # These create a sound wave visualization effect
+    WAVE_RECORDING = "  ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁  "
+    WAVE_PROCESSING = "  ░▒▓█▓▒░░▒▓█▓▒░  "
+    WAVE_COMPLETE = "  ▂▄▆█▆▄▂ ▂▄▆█▆▄▂  "
+    WAVE_IDLE = "  ▁▁▂▁▁▂▁▁▂▁▁▂▁▁  "
+
     def __init__(self, enabled: bool = True):
         """
         Initialize notifier.
@@ -129,38 +136,31 @@ class Notifier:
         return False
 
     def notify_recording_started(self):
-        """Show notification when recording starts."""
+        """Show notification when recording starts with visual wave."""
         self._send_notification(
-            title="Recording Started",
-            message="Listening for speech...",
+            title="DictaFlow",
+            message=self.WAVE_RECORDING,
             urgency="low"
         )
 
     def notify_recording_stopped(self):
-        """Show notification when recording stops."""
+        """Show notification when recording stops with processing wave."""
         self._send_notification(
-            title="Recording Stopped",
-            message="Processing audio...",
+            title="DictaFlow",
+            message=self.WAVE_PROCESSING,
             urgency="low"
         )
 
-    def notify_transcription_complete(self, text: str, max_preview_length: int = 100):
+    def notify_transcription_complete(self, text: str = "", max_preview_length: int = 100):
         """
-        Show notification when transcription completes.
+        Show notification when transcription completes with visual wave.
 
         Args:
-            text: The transcribed text
-            max_preview_length: Maximum length of text preview in notification
+            text: The transcribed text (unused, kept for API compatibility)
+            max_preview_length: Unused, kept for API compatibility
         """
-        if not text or not text.strip():
-            preview = "(No text transcribed)"
-        else:
-            preview = text.strip()
-            if len(preview) > max_preview_length:
-                preview = preview[:max_preview_length - 3] + "..."
-
         self._send_notification(
-            title="Transcription Complete",
-            message=preview,
+            title="DictaFlow",
+            message=self.WAVE_COMPLETE,
             urgency="normal"
         )

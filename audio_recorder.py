@@ -13,14 +13,15 @@ from typing import Optional
 
 class AudioRecorder:
     """Thread-safe audio recorder."""
-    
-    def __init__(self, sample_rate: int = 16000, channels: int = 1):
+
+    def __init__(self, sample_rate: int = 16000, channels: int = 1, on_level_update=None):
         """
         Initialize audio recorder.
-        
+
         Args:
             sample_rate: Sample rate in Hz
             channels: Number of audio channels (1 for mono, 2 for stereo)
+            on_level_update: Callback function that receives audio level (0.0 to 1.0)
         """
         self.sample_rate = sample_rate
         self.channels = channels
@@ -28,6 +29,8 @@ class AudioRecorder:
         self.audio_frames = []
         self.stream = None
         self.lock = threading.Lock()
+        self._on_level_update = on_level_update
+        self._current_level = 0.0
     
     def start_recording(self):
         """Start recording audio."""
@@ -43,6 +46,13 @@ class AudioRecorder:
                     print(f"Audio status: {status}")
                 if self.recording:
                     self.audio_frames.append(indata.copy())
+                    # Calculate audio level (RMS)
+                    rms = np.sqrt(np.mean(indata ** 2))
+                    # Normalize to 0-1 range (adjust multiplier for sensitivity)
+                    level = min(1.0, rms * 4.0)
+                    self._current_level = level
+                    if self._on_level_update:
+                        self._on_level_update(level)
             
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,

@@ -70,6 +70,7 @@ from transcriber import Transcriber
 from keyboard_handler import KeyboardHandler
 from text_inserter import TextInserter
 from notifier import Notifier
+from visual_indicator import get_indicator
 
 
 class TranscriptionApp:
@@ -92,7 +93,8 @@ class TranscriptionApp:
         
         self.recorder = AudioRecorder(
             sample_rate=audio_cfg['sample_rate'],
-            channels=audio_cfg['channels']
+            channels=audio_cfg['channels'],
+            on_level_update=self._on_audio_level_update
         )
         
         self.transcriber = Transcriber(
@@ -130,27 +132,37 @@ class TranscriptionApp:
         else:
             self.notifier = None
 
+        # Initialize visual indicator
+        visual_config = self.config.get('visual_indicator', {})
+        if visual_config.get('enabled', True):
+            self.visual_indicator = get_indicator(
+                position=visual_config.get('position', 'top-center'),
+                width=visual_config.get('width', 340),
+                height=visual_config.get('height', 80)
+            )
+        else:
+            self.visual_indicator = None
+
         self.app_config = app_cfg
-    
+
+    def _on_audio_level_update(self, level: float):
+        """Callback for real-time audio level updates."""
+        if self.visual_indicator:
+            self.visual_indicator.set_audio_level(level)
+
     def _on_recording_start(self):
         """Callback when recording should start."""
-        self.recorder.start_recording()
+        # Show visual indicator immediately
+        if self.visual_indicator:
+            self.visual_indicator.show("recording")
 
-        # Send notification if enabled
-        if self.notifier and self.notifications_config.get('on_recording_start', True):
-            try:
-                self.notifier.notify_recording_started()
-            except Exception:
-                pass  # Don't let notification failures affect recording
+        self.recorder.start_recording()
     
     def _on_recording_stop(self):
         """Callback when recording should stop."""
-        # Send notification if enabled
-        if self.notifier and self.notifications_config.get('on_recording_stop', True):
-            try:
-                self.notifier.notify_recording_stopped()
-            except Exception:
-                pass  # Don't let notification failures affect processing
+        # Change visual indicator to processing state
+        if self.visual_indicator:
+            self.visual_indicator.set_state("processing")
 
         self._process_recording()
     
@@ -201,16 +213,13 @@ class TranscriptionApp:
                 except Exception as e:
                     print(f"⚠️  Error inserting text: {e}")
 
-            # Send transcription complete notification if enabled
-            if self.notifier and self.notifications_config.get('on_transcription_complete', True):
-                try:
-                    preview_length = self.notifications_config.get('preview_length', 100)
-                    self.notifier.notify_transcription_complete(
-                        transcribed_text,
-                        max_preview_length=preview_length
-                    )
-                except Exception:
-                    pass  # Don't let notification failures affect the workflow
+            # Hide visual indicator
+            if self.visual_indicator:
+                self.visual_indicator.set_state("complete")
+                # Hide after a brief moment
+                import time
+                time.sleep(0.3)
+                self.visual_indicator.hide()
 
             # Clean up temporary file if configured
             if self.app_config.get('cleanup_temp_files', True):
@@ -233,8 +242,8 @@ class TranscriptionApp:
         print(f"Release {modifier}+{trigger} to stop and transcribe")
         if self.text_insertion_enabled:
             print("📝 Transcribed text will be inserted at cursor position")
-        if self.notifier:
-            print("🔔 Desktop notifications enabled")
+        if self.visual_indicator and self.visual_indicator.enabled:
+            print("🎵 Visual wave indicator enabled")
         print("Press Ctrl+C to exit")
         print("=" * 60)
         
