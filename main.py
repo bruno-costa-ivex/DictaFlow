@@ -258,11 +258,16 @@ class TranscriptionApp:
         
         # Start keyboard listener
         self.keyboard_handler.start()
-        
+
         try:
-            # Keep the program running
-            self.keyboard_handler.join()
+            if self.visual_indicator and self.visual_indicator.enabled:
+                # tkinter must run on the main thread on macOS
+                self.visual_indicator.start_mainloop()
+            else:
+                self.keyboard_handler.join()
         except KeyboardInterrupt:
+            pass
+        finally:
             print("\n🛑 Shutting down...")
             if self.recorder.is_recording():
                 self.recorder.stop_recording()

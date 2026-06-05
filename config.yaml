@@ -17,8 +17,8 @@ model:
 
 # Keyboard Shortcut Settings
 keyboard:
-  modifier_key: "cmd"  # Modifier key: "alt", "ctrl", "shift", "super", or "cmd" (macOS Command)
-  trigger_key: "w"  # Trigger key (single character)
+  modifier_key: "ctrl"  # Modifier key: "alt", "ctrl", "shift", "super", or "cmd" (macOS Command)
+  trigger_key: "r"  # Trigger key (single character) — Ctrl+R: free on Mac, R for Record
   # Note: Press and hold modifier+trigger to record, release to transcribe
 
 # Application Settings
