@@ -17,6 +17,7 @@ class KeyboardHandler:
         "ctrl": [keyboard.Key.ctrl_l, keyboard.Key.ctrl_r],
         "shift": [keyboard.Key.shift_l, keyboard.Key.shift_r],
         "super": [keyboard.Key.cmd_l, keyboard.Key.cmd_r],
+        "cmd": [keyboard.Key.cmd_l, keyboard.Key.cmd_r],  # macOS Command key
     }
     
     def __init__(
@@ -30,7 +31,7 @@ class KeyboardHandler:
         Initialize keyboard handler.
         
         Args:
-            modifier_key: Modifier key name ("alt", "ctrl", "shift", "super")
+            modifier_key: Modifier key name ("alt", "ctrl", "shift", "super", "cmd")
             trigger_key: Trigger key character (e.g., "w")
             on_start: Callback function when recording should start
             on_stop: Callback function when recording should stop
