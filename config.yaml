@@ -30,7 +30,7 @@ app:
 # Text Insertion Settings
 text_insertion:
   enabled: true  # Enable automatic text insertion at cursor position
-  method: "direct"  # "direct" (type character by character) or "clipboard" (use Ctrl+V)
+  method: "clipboard"  # "direct" (type character by character) or "clipboard" (use Cmd+V on macOS)
   typing_delay: 0.01  # Delay between keystrokes in seconds (for reliability)
   auto_capitalize: true  # Automatically capitalize first letter
   add_period: false  # Add period at end if text doesn't end with punctuation
