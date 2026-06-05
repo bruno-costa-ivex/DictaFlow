@@ -62,20 +62,21 @@ class Config:
             )
         
         # Validate device
-        valid_devices = ["cpu", "cuda"]
+        valid_devices = ["cpu", "cuda", "mlx"]
         if self.config['model']['device'] not in valid_devices:
             raise ValueError(
                 f"Invalid device: {self.config['model']['device']}\n"
                 f"Valid options: {', '.join(valid_devices)}"
             )
-        
-        # Validate compute type
-        valid_compute_types = ["int8", "float16", "float32"]
-        if self.config['model']['compute_type'] not in valid_compute_types:
-            raise ValueError(
-                f"Invalid compute type: {self.config['model']['compute_type']}\n"
-                f"Valid options: {', '.join(valid_compute_types)}"
-            )
+
+        # compute_type is not used by mlx — skip validation for that device
+        if self.config['model']['device'] != "mlx":
+            valid_compute_types = ["int8", "float16", "float32"]
+            if self.config['model']['compute_type'] not in valid_compute_types:
+                raise ValueError(
+                    f"Invalid compute type: {self.config['model']['compute_type']}\n"
+                    f"Valid options: {', '.join(valid_compute_types)}"
+                )
     
     @property
     def audio(self) -> Dict[str, Any]:
