@@ -1,14 +1,16 @@
 """
 Shared test setup for DictaFlow unit tests.
 
-DictaFlow depends on OS-bound / heavy packages (pynput, pyperclip, mlx-whisper)
-that are awkward to install in CI and require accessibility permissions on macOS.
-We stub them here *before* the project modules import them, so the unit tests
-exercise the real DictaFlow logic without those packages being installed.
+DictaFlow depends on OS-bound / heavy packages (pynput, pyperclip, mlx-whisper,
+sounddevice) that are awkward to install in CI and require accessibility
+permissions or real audio hardware. We stub them here *before* the project
+modules import them, so the unit tests exercise the real DictaFlow logic
+without those packages being installed.
 
 The stubs are intentionally faithful to the small surface DictaFlow uses:
 distinct sentinel objects for each key, a Controller that records press/release
-calls, and a Listener that does nothing.
+calls, a Listener that does nothing, and (for sounddevice) placeholder
+query_devices/InputStream attributes that tests monkeypatch per-case.
 """
 
 import sys
@@ -107,6 +109,32 @@ def _stub_pyperclip():
     sys.modules["pyperclip"] = pyperclip
 
 
+def _stub_sounddevice():
+    """audio_recorder.py imports sounddevice at module level. Tests that
+    exercise it (test_audio_recorder.py) monkeypatch query_devices/
+    InputStream per-case — monkeypatch.setattr requires the attribute to
+    already exist on the target, so these are real (if inert) callables
+    rather than missing entirely."""
+    sd = types.ModuleType("sounddevice")
+    sd.query_devices = lambda: []
+
+    class _StubInputStream:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    sd.InputStream = _StubInputStream
+    sys.modules["sounddevice"] = sd
+
+
 # Only stub the modules that aren't actually installed, so a fully-provisioned
 # machine can run the same tests against the real packages if it has them.
 def _ensure(name, stub):
@@ -118,3 +146,4 @@ def _ensure(name, stub):
 
 _ensure("pynput", _stub_pynput)
 _ensure("pyperclip", _stub_pyperclip)
+_ensure("sounddevice", _stub_sounddevice)
