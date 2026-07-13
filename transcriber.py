@@ -97,6 +97,28 @@ class Transcriber:
             audio_file, language=language, beam_size=beam_size, verbose=verbose
         )
 
+    @staticmethod
+    def _load_wav_as_array(audio_file: str):
+        """
+        Load a 16 kHz mono WAV file as a float32 numpy array.
+
+        mlx-whisper shells out to ffmpeg when given a file path; decoding the
+        WAV ourselves avoids that external dependency. Returns None if the
+        file isn't a 16 kHz mono PCM WAV (caller falls back to the path,
+        which requires ffmpeg).
+        """
+        import wave
+        import numpy as np
+
+        try:
+            with wave.open(audio_file, 'rb') as wf:
+                if wf.getframerate() != 16000 or wf.getnchannels() != 1 or wf.getsampwidth() != 2:
+                    return None
+                frames = wf.readframes(wf.getnframes())
+            return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        except (wave.Error, EOFError):
+            return None
+
     def _transcribe_mlx(self, audio_file: str, language: str = "en", verbose: bool = False) -> Tuple[str, dict]:
         """Transcribe using mlx-whisper (Apple Silicon)."""
         try:
@@ -107,6 +129,11 @@ class Transcriber:
                 "Install it with: pip install mlx-whisper"
             )
 
+        # Decode the WAV in-process so ffmpeg isn't required
+        audio = self._load_wav_as_array(audio_file)
+        if audio is None:
+            audio = audio_file  # non-standard format — let mlx-whisper use ffmpeg
+
         if not verbose:
             stdout_redirect = contextlib.redirect_stdout(io.StringIO())
             stderr_redirect = contextlib.redirect_stderr(io.StringIO())
@@ -116,7 +143,7 @@ class Transcriber:
 
         with stdout_redirect, stderr_redirect:
             result = mlx_whisper.transcribe(
-                audio_file,
+                audio,
                 path_or_hf_repo=self._mlx_repo,
                 language=language if language != "auto" else None,
                 verbose=verbose,
@@ -173,9 +200,9 @@ class Transcriber:
             if "libcublas.so.12" in error_msg or "cublas" in error_msg.lower():
                 print("\n❌ CUDA Library Error:")
                 print("   faster-whisper requires libcublas.so.12 but your system has CUDA 13.0")
-                print("   Run the setup script to create compatibility symlink:")
-                print("   ./setup_cuda_libs.sh")
-                print("   Or manually create: sudo ln -s /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.13 /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.12")
+                print("   main.py already tries to create a compatibility symlink automatically on startup.")
+                print("   If that didn't work, create it manually:")
+                print("   sudo ln -s /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.13 /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.12")
                 raise RuntimeError("CUDA library compatibility issue. See instructions above.") from e
             raise
 
