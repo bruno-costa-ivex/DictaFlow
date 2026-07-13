@@ -1,0 +1,42 @@
+[tool.poetry]
+name = "dictaflow"
+version = "0.1.0"
+description = "Real-Time Speech-to-Text Transcription Tool with automatic text insertion"
+authors = ["Bruno Costa <bruno.costa@ivex.ai>"]
+license = "MIT"
+readme = "README.md"
+# Intentional: this is a flat-module personal CLI tool run via
+# `poetry run python main.py`, not an importable package. Poetry only
+# manages dependencies here — there is no console-script entry point, and
+# adding one under `package-mode = false` would silently do nothing.
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+numpy = "^2.4"
+sounddevice = "^0.5.5"
+faster-whisper = "^1.2"
+# arm64-only: the mlx / mlx-whisper wheels only ship for Apple Silicon, not
+# Intel Macs, even though sys_platform == "darwin" is true on both.
+mlx-whisper = {version = "^0.4.3", markers = "sys_platform == 'darwin' and platform_machine == 'arm64'"}
+pynput = "^1.8"
+PyYAML = "^6.0"
+pyperclip = "^1.11"
+desktop-notifier = "^6.2"
+# visual_indicator.py's native macOS overlay imports AppKit/PyObjCTools
+# directly. It currently works only because pynput's own darwin-marked deps
+# transitively pull in pyobjc-framework-Cocoa — declare it explicitly so it
+# isn't silently dependent on another package's dependency choices.
+pyobjc-framework-Cocoa = {version = "^12.2", markers = "sys_platform == 'darwin'"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0"
+ruff = ">=0.8"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"

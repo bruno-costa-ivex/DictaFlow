@@ -14,6 +14,7 @@ dicta_env/
 venv/
 env/
 ENV/
+.venv/
 
 # Audio files
 *.wav
