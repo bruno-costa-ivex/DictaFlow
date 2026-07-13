@@ -1,36 +1,55 @@
 #!/usr/bin/env python3
 """
 Transcriber Module
-Handles audio transcription using faster-whisper
+Handles audio transcription using faster-whisper (CPU/CUDA) or mlx-whisper (Apple Silicon)
 """
 
 import contextlib
 import io
-from faster_whisper import WhisperModel
 from typing import Tuple
+
+
+# mlx-community HuggingFace repo mapping for each model size
+_MLX_MODEL_REPOS = {
+    "tiny": "mlx-community/whisper-tiny-mlx",
+    "base": "mlx-community/whisper-base-mlx",
+    "small": "mlx-community/whisper-small-mlx",
+    "medium": "mlx-community/whisper-medium-mlx",
+    "large-v2": "mlx-community/whisper-large-v2-mlx",
+    "large-v3": "mlx-community/whisper-large-v3-mlx",
+}
 
 
 class Transcriber:
     """Audio transcription using Whisper model."""
-    
+
     def __init__(self, model_size: str, device: str = "cpu", compute_type: str = "int8"):
         """
         Initialize transcriber with Whisper model.
-        
+
         Args:
             model_size: Model size (tiny, base, small, medium, large-v2, large-v3)
-            device: Device to use ("cpu" or "cuda")
-            compute_type: Compute type ("int8", "float16", "float32")
+            device: Device to use ("cpu", "cuda", or "mlx" for Apple Silicon)
+            compute_type: Compute type ("int8", "float16", "float32") — ignored for mlx
         """
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
         self.model = None
+        self._mlx_repo = None
         self._load_model()
-    
+
     def _load_model(self):
         """Load Whisper model with fallback to CPU if needed."""
+        if self.device == "mlx":
+            self._mlx_repo = _MLX_MODEL_REPOS.get(
+                self.model_size, f"mlx-community/whisper-{self.model_size}-mlx"
+            )
+            print(f"✅ MLX model configured: {self._mlx_repo} (Apple Silicon)")
+            return
+
         try:
+            from faster_whisper import WhisperModel
             self.model = WhisperModel(
                 self.model_size,
                 device=self.device,
@@ -40,6 +59,7 @@ class Transcriber:
         except ValueError as e:
             if "unsupported device" in str(e).lower():
                 print("⚠️  Device not supported, falling back to CPU...")
+                from faster_whisper import WhisperModel
                 self.model = WhisperModel(
                     self.model_size,
                     device="cpu",
@@ -48,7 +68,7 @@ class Transcriber:
                 print("✅ Model loaded on CPU!")
             else:
                 raise
-    
+
     def transcribe(
         self,
         audio_file: str,
@@ -58,26 +78,101 @@ class Transcriber:
     ) -> Tuple[str, dict]:
         """
         Transcribe audio file.
-        
+
         Args:
             audio_file: Path to audio file
             language: Language code (e.g., "en", "es", "fr", "auto" for auto-detect)
-            beam_size: Beam search size
+            beam_size: Beam search size (faster-whisper only; ignored for mlx)
             verbose: Whether to show verbose output
-            
+
         Returns:
             Tuple of (transcribed_text, info_dict)
         """
         print("📝 Transcribing...")
-        
-        # Suppress output during transcription if not verbose
+
+        if self.device == "mlx":
+            return self._transcribe_mlx(audio_file, language=language, verbose=verbose)
+
+        return self._transcribe_faster_whisper(
+            audio_file, language=language, beam_size=beam_size, verbose=verbose
+        )
+
+    @staticmethod
+    def _load_wav_as_array(audio_file: str):
+        """
+        Load a 16 kHz mono WAV file as a float32 numpy array.
+
+        mlx-whisper shells out to ffmpeg when given a file path; decoding the
+        WAV ourselves avoids that external dependency. Returns None if the
+        file isn't a 16 kHz mono PCM WAV (caller falls back to the path,
+        which requires ffmpeg).
+        """
+        import wave
+        import numpy as np
+
+        try:
+            with wave.open(audio_file, 'rb') as wf:
+                if wf.getframerate() != 16000 or wf.getnchannels() != 1 or wf.getsampwidth() != 2:
+                    return None
+                frames = wf.readframes(wf.getnframes())
+            return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        except (wave.Error, EOFError):
+            return None
+
+    def _transcribe_mlx(self, audio_file: str, language: str = "en", verbose: bool = False) -> Tuple[str, dict]:
+        """Transcribe using mlx-whisper (Apple Silicon)."""
+        try:
+            import mlx_whisper
+        except ImportError:
+            raise ImportError(
+                "mlx-whisper is required for Apple Silicon acceleration.\n"
+                "Install it with: pip install mlx-whisper"
+            )
+
+        # Decode the WAV in-process so ffmpeg isn't required
+        audio = self._load_wav_as_array(audio_file)
+        if audio is None:
+            audio = audio_file  # non-standard format — let mlx-whisper use ffmpeg
+
         if not verbose:
             stdout_redirect = contextlib.redirect_stdout(io.StringIO())
             stderr_redirect = contextlib.redirect_stderr(io.StringIO())
         else:
             stdout_redirect = contextlib.nullcontext()
             stderr_redirect = contextlib.nullcontext()
-        
+
+        with stdout_redirect, stderr_redirect:
+            result = mlx_whisper.transcribe(
+                audio,
+                path_or_hf_repo=self._mlx_repo,
+                language=language if language != "auto" else None,
+                verbose=verbose,
+            )
+
+        transcribed_text = result.get("text", "").strip()
+        detected_language = result.get("language", language)
+
+        print("✅ Transcription complete!")
+        print(f"   Detected language: {detected_language}")
+        print(f"   Transcribed text: {transcribed_text}")
+        print("-" * 60)
+
+        return transcribed_text, {
+            'language': detected_language,
+            'language_probability': 1.0,
+        }
+
+    def _transcribe_faster_whisper(
+        self, audio_file: str, language: str = "en", beam_size: int = 5, verbose: bool = False
+    ) -> Tuple[str, dict]:
+        """Transcribe using faster-whisper (CPU/CUDA)."""
+        if not verbose:
+            stdout_redirect = contextlib.redirect_stdout(io.StringIO())
+            stderr_redirect = contextlib.redirect_stderr(io.StringIO())
+        else:
+            stdout_redirect = contextlib.nullcontext()
+            stderr_redirect = contextlib.nullcontext()
+
         with stdout_redirect, stderr_redirect:
             try:
                 segments, info = self.model.transcribe(
@@ -93,8 +188,7 @@ class Transcriber:
                     beam_size=beam_size,
                     language=language if language != "auto" else None
                 )
-        
-        # Collect text from segments
+
         text_parts = []
         try:
             for segment in segments:
@@ -106,21 +200,20 @@ class Transcriber:
             if "libcublas.so.12" in error_msg or "cublas" in error_msg.lower():
                 print("\n❌ CUDA Library Error:")
                 print("   faster-whisper requires libcublas.so.12 but your system has CUDA 13.0")
-                print("   Run the setup script to create compatibility symlink:")
-                print("   ./setup_cuda_libs.sh")
-                print("   Or manually create: sudo ln -s /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.13 /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.12")
+                print("   main.py already tries to create a compatibility symlink automatically on startup.")
+                print("   If that didn't work, create it manually:")
+                print("   sudo ln -s /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.13 /usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.12")
                 raise RuntimeError("CUDA library compatibility issue. See instructions above.") from e
             raise
-        
+
         transcribed_text = " ".join(text_parts).strip()
-        
+
         print("✅ Transcription complete!")
         print(f"   Detected language: {info.language} (probability: {info.language_probability:.2f})")
         print(f"   Transcribed text: {transcribed_text}")
         print("-" * 60)
-        
+
         return transcribed_text, {
             'language': info.language,
             'language_probability': info.language_probability
         }
-

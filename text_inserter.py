@@ -4,8 +4,12 @@ Text Inserter Module
 Types transcribed text at the current cursor position
 """
 
+import sys
 import time
 from pynput.keyboard import Controller, Key
+
+# macOS uses Cmd+V to paste; Linux/Windows use Ctrl+V
+_PASTE_KEY = Key.cmd if sys.platform == "darwin" else Key.ctrl
 
 
 class TextInserter:
@@ -75,7 +79,7 @@ class TextInserter:
         
         Args:
             text: Text to insert
-            use_ctl_v: Use Ctrl+V method instead of direct typing
+            use_ctrl_v: Use Ctrl+V method instead of direct typing
         """
         if not text or not text.strip():
             return
@@ -93,11 +97,11 @@ class TextInserter:
                 # Set new text to clipboard
                 pyperclip.copy(text.strip())
                 
-                # Paste using Ctrl+V
-                self.keyboard.press(Key.ctrl)
+                # Paste using Cmd+V (macOS) or Ctrl+V (Linux/Windows)
+                self.keyboard.press(_PASTE_KEY)
                 self.keyboard.press('v')
                 self.keyboard.release('v')
-                self.keyboard.release(Key.ctrl)
+                self.keyboard.release(_PASTE_KEY)
                 
                 # Small delay
                 time.sleep(0.1)

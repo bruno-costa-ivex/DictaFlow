@@ -1,5 +1,11 @@
 # DictaFlow - System Design & Architecture
 
+> **Historical document.** Written before the MLX/Apple Silicon support, solo-key
+> trigger mode, native macOS visual indicator, and Poetry migration (this doc
+> still shows `requirements.txt` in the project file tree, for example).
+> Details here (e.g. "Alt+W" as the default shortcut) may no longer be
+> accurate — see `README.md` and `CLAUDE.md` for the current setup.
+
 ## Project Overview
 
 **DictaFlow** is a real-time speech-to-text transcription tool that enables push-to-talk dictation into any application. Users press and hold a keyboard shortcut (default: Alt+W) to record audio, then release to automatically transcribe and insert the text at the cursor position.

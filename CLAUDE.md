@@ -4,24 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DictaFlow is a Python-based real-time speech-to-text transcription tool that functions as a push-to-talk dictation utility. It captures audio via keyboard shortcut (Alt+W by default), transcribes it using OpenAI's Whisper model via faster-whisper, and automatically inserts the transcribed text at the cursor position.
+DictaFlow is a Python-based real-time speech-to-text transcription tool that functions as a push-to-talk dictation utility. It captures audio via a configurable keyboard shortcut: by default, a solo-key trigger (hold Right Command alone — `right_cmd`/`right_alt`/`right_ctrl`/`right_shift`/`left_cmd`/`left_alt`/`left_ctrl`/`left_shift` are supported), or alternatively a modifier+letter combo (`alt`/`ctrl`/`shift`/`super`/`cmd` + a trigger character). Solo mode exists because macOS may not reliably suppress a combo's raw keystroke from also reaching the frontmost app (see keyboard_handler.py). It transcribes audio using OpenAI's Whisper model via faster-whisper, and automatically inserts the transcribed text at the cursor position.
 
 ## Development Commands
 
 ```bash
-# Setup virtual environment and install dependencies
-python3 -m venv dicta_env
-source dicta_env/bin/activate
-pip install -r requirements.txt
+# Install dependencies (Poetry manages the virtual environment)
+poetry install
 
 # Run the application
-python main.py
+poetry run python main.py
 
 # Run with custom configuration
-python main.py --config custom_config.yaml
+poetry run python main.py --config custom_config.yaml
+
+# Run tests
+poetry run pytest tests/ -v
+
+# Run lint
+poetry run ruff check .
 ```
 
-**Note:** There are no test, lint, or build commands configured for this project.
+**Note:** There is no build/compile step (pure Python). CI (`.github/workflows/ci.yml`) runs the test suite and `ruff check .` on every PR to `main` and every push to `main`.
 
 ## Architecture
 
@@ -29,12 +33,13 @@ The application follows a modular architecture with clear separation of concerns
 
 ```
 main.py (TranscriptionApp - Orchestrator)
-    ├── config.py        → Loads and validates config.yaml
-    ├── keyboard_handler.py → Monitors Alt+W trigger via pynput
-    ├── audio_recorder.py   → Captures audio via sounddevice (16kHz, mono)
-    ├── transcriber.py      → Whisper model via faster-whisper (GPU/CPU)
-    ├── text_inserter.py    → Types text at cursor via pynput
-    └── notifier.py         → Desktop notifications via desktop-notifier
+    ├── config.py            → Loads and validates config.yaml
+    ├── keyboard_handler.py   → Monitors configured shortcut via pynput; solo-key mode (default) or modifier+letter combo mode
+    ├── audio_recorder.py     → Captures audio via sounddevice (16kHz, mono); pinnable to a named input device
+    ├── transcriber.py        → Whisper model via faster-whisper (GPU/CPU) or mlx-whisper (Apple Silicon)
+    ├── text_inserter.py      → Types text at cursor via pynput
+    ├── notifier.py           → Desktop notifications via desktop-notifier
+    └── visual_indicator.py   → Recording/processing/complete overlay: Tkinter WaveIndicator (Linux) or a native AppKit FloatingPanelIndicator (macOS)
 ```
 
 ### Component Responsibilities
@@ -67,10 +72,12 @@ main.py (TranscriptionApp - Orchestrator)
 All settings in `config.yaml`:
 
 - **model.size**: tiny, base, small, medium, large-v2, large-v3
-- **model.device**: cpu, cuda
-- **model.compute_type**: int8, float16, float32
-- **keyboard.modifier_key**: alt, ctrl, shift, super
-- **text_insertion.method**: direct (character-by-character), clipboard (Ctrl+V)
+- **model.device**: cpu, cuda, mlx (Apple Silicon)
+- **model.compute_type**: int8, float16, float32 (ignored for mlx)
+- **keyboard.modifier_key** / **keyboard.trigger_key**: two modes —
+  - Solo-key mode (default): `trigger_key: ""`, `modifier_key` is `right_cmd`, `right_alt`, `right_ctrl`, `right_shift`, `left_cmd`, `left_alt`, `left_ctrl`, or `left_shift` — hold that key alone.
+  - Combo mode: `trigger_key` is any single character, `modifier_key` is `alt`, `ctrl`, `shift`, `super`, or `cmd` — hold both together.
+- **text_insertion.method**: direct (character-by-character), clipboard (Ctrl+V on macOS)
 - **notifications.enabled**: enable/disable desktop notifications
 
 ## Key Dependencies
@@ -83,6 +90,6 @@ All settings in `config.yaml`:
 
 ## Platform Notes
 
-- Linux-focused (pynput requires display server)
-- Optional CUDA 13.0+ for GPU acceleration (falls back to CPU automatically)
+- Supports Linux (pynput requires an X11/Wayland display server) and macOS (Apple Silicon gets MLX acceleration; visual_indicator.py uses a native AppKit overlay instead of Tkinter on macOS)
+- Optional CUDA 13.0+ for GPU acceleration on Linux/NVIDIA (falls back to CPU automatically)
 - Python 3.11+ required

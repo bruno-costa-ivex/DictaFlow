@@ -14,7 +14,7 @@ from typing import Optional
 class AudioRecorder:
     """Thread-safe audio recorder."""
 
-    def __init__(self, sample_rate: int = 16000, channels: int = 1, on_level_update=None):
+    def __init__(self, sample_rate: int = 16000, channels: int = 1, on_level_update=None, input_device: str = ""):
         """
         Initialize audio recorder.
 
@@ -22,6 +22,12 @@ class AudioRecorder:
             sample_rate: Sample rate in Hz
             channels: Number of audio channels (1 for mono, 2 for stereo)
             on_level_update: Callback function that receives audio level (0.0 to 1.0)
+            input_device: Substring to match against sounddevice's input device
+                names (e.g. "MacBook Pro Microphone"). Pins recording to that
+                device regardless of which one macOS currently considers the
+                system default — otherwise, connecting a Bluetooth headset or
+                other mic can silently redirect recording to it. Empty string
+                uses the system default input device.
         """
         self.sample_rate = sample_rate
         self.channels = channels
@@ -31,16 +37,36 @@ class AudioRecorder:
         self.lock = threading.Lock()
         self._on_level_update = on_level_update
         self._current_level = 0.0
-    
+        self._device_index = self._resolve_input_device(input_device)
+
+    def _resolve_input_device(self, input_device: str):
+        """Find a sounddevice input device index by name substring, or None
+        to fall back to the system default."""
+        if not input_device:
+            return None
+        try:
+            devices = sd.query_devices()
+        except Exception as e:
+            print(f"⚠️  Could not query audio devices ({e}), using system default input.")
+            return None
+
+        for index, device in enumerate(devices):
+            if device.get('max_input_channels', 0) > 0 and input_device.lower() in device['name'].lower():
+                print(f"🎙️  Using input device: {device['name']} (index {index})")
+                return index
+
+        print(f"⚠️  Input device matching '{input_device}' not found, using system default input.")
+        return None
+
     def start_recording(self):
         """Start recording audio."""
         with self.lock:
             if self.recording:
                 return
-            
+
             self.recording = True
             self.audio_frames = []
-            
+
             def audio_callback(indata, frames, time_info, status):
                 if status:
                     print(f"Audio status: {status}")
@@ -53,14 +79,15 @@ class AudioRecorder:
                     self._current_level = level
                     if self._on_level_update:
                         self._on_level_update(level)
-            
+
             self.stream = sd.InputStream(
+                device=self._device_index,
                 samplerate=self.sample_rate,
                 channels=self.channels,
                 dtype='float32',
                 callback=audio_callback
             )
-            
+
             self.stream.start()
             print("🎤 Recording started...")
     

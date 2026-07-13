@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
 Real-Time Transcription Tool - Main Entry Point
-Press and hold Alt+W (or configured shortcut) to record, release to transcribe.
+Press and hold the configured shortcut (default: Right Command, held alone) to record, release to transcribe.
 """
 
 import tempfile
 import os
 import sys
+import threading
+import time
 from pathlib import Path
 
 # Setup CUDA library paths before importing faster-whisper
@@ -33,7 +35,6 @@ def setup_cuda_library_path():
 
 def _create_local_cuda_symlink():
     """Create a local symlink in user space if possible."""
-    import shutil
     local_lib_dir = Path.home() / ".local" / "lib"
     local_lib_dir.mkdir(parents=True, exist_ok=True)
     
@@ -64,13 +65,15 @@ setup_cuda_library_path()
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import Config
-from audio_recorder import AudioRecorder
-from transcriber import Transcriber
-from keyboard_handler import KeyboardHandler
-from text_inserter import TextInserter
-from notifier import Notifier
-from visual_indicator import get_indicator
+# These must come after setup_cuda_library_path() and the sys.path insert
+# above, so they're intentionally not at the top of the file.
+from config import Config  # noqa: E402
+from audio_recorder import AudioRecorder  # noqa: E402
+from transcriber import Transcriber  # noqa: E402
+from keyboard_handler import KeyboardHandler  # noqa: E402
+from text_inserter import TextInserter  # noqa: E402
+from notifier import Notifier  # noqa: E402
+from visual_indicator import get_indicator  # noqa: E402
 
 
 class TranscriptionApp:
@@ -94,7 +97,8 @@ class TranscriptionApp:
         self.recorder = AudioRecorder(
             sample_rate=audio_cfg['sample_rate'],
             channels=audio_cfg['channels'],
-            on_level_update=self._on_audio_level_update
+            on_level_update=self._on_audio_level_update,
+            input_device=audio_cfg.get('input_device', '')
         )
         
         self.transcriber = Transcriber(
@@ -145,6 +149,16 @@ class TranscriptionApp:
 
         self.app_config = app_cfg
 
+        # Each recording is transcribed on its own throwaway thread (see
+        # _on_recording_stop). Without this lock, pressing the trigger again
+        # before a previous transcription finishes lets two threads call
+        # into mlx_whisper concurrently — MLX's per-thread execution context
+        # doesn't support that and crashes with "There is no Stream(cpu, 1)
+        # in current thread." Serializing the whole save/transcribe/insert
+        # body also avoids two recordings' text getting inserted interleaved
+        # or out of order.
+        self._transcription_lock = threading.Lock()
+
     def _on_audio_level_update(self, level: float):
         """Callback for real-time audio level updates."""
         if self.visual_indicator:
@@ -152,40 +166,74 @@ class TranscriptionApp:
 
     def _on_recording_start(self):
         """Callback when recording should start."""
-        # Show visual indicator immediately
-        if self.visual_indicator:
-            self.visual_indicator.show("recording")
+        # This runs directly on the pynput listener's callback thread (see
+        # keyboard_handler.py), not on a background thread — an uncaught
+        # exception here (e.g. AudioRecorder.start_recording() raising a
+        # PortAudioError because the input device was disconnected/changed)
+        # propagates into pynput's own callback wrapper, which silently
+        # stops the whole listener. The trigger key would then do nothing
+        # at all afterward, with no indication why. Catch and report instead.
+        try:
+            # Show visual indicator immediately
+            if self.visual_indicator:
+                self.visual_indicator.show("recording")
+            if self.notifier and self.notifications_config.get('on_recording_start', True):
+                self.notifier.notify_recording_started()
 
-        self.recorder.start_recording()
-    
+            self.recorder.start_recording()
+        except Exception as e:
+            print(f"⚠️  Could not start recording: {e}")
+            if self.visual_indicator:
+                self.visual_indicator.hide()
+
     def _on_recording_stop(self):
         """Callback when recording should stop."""
-        # Change visual indicator to processing state
-        if self.visual_indicator:
-            self.visual_indicator.set_state("processing")
+        try:
+            # Change visual indicator to processing state
+            if self.visual_indicator:
+                self.visual_indicator.set_state("processing")
+            if self.notifier and self.notifications_config.get('on_recording_stop', True):
+                self.notifier.notify_recording_stopped()
 
-        self._process_recording()
+            # Run off the keyboard listener's thread: in combo mode (see
+            # keyboard_handler.py) that thread drives a blocking CGEventTap
+            # needed to swallow the hotkey before it reaches other apps, so
+            # anything slow here — like Whisper transcription — would otherwise
+            # stall system-wide keyboard input until it returns. Actual
+            # transcription work is serialized via _transcription_lock so
+            # overlapping presses can't run concurrently (see _process_recording).
+            threading.Thread(target=self._process_recording, daemon=True).start()
+        except Exception as e:
+            print(f"⚠️  Could not process recording: {e}")
+            if self.visual_indicator:
+                self.visual_indicator.hide()
     
     def _process_recording(self):
         """Process the recorded audio: save and transcribe."""
         audio_data = self.recorder.stop_recording()
-        
+
         if audio_data is None or len(audio_data) == 0:
             print("⚠️  No audio recorded.")
             return
-        
-        # Save to temporary file for transcription
+
+        with self._transcription_lock:
+            self._transcribe_and_insert(audio_data)
+
+    def _transcribe_and_insert(self, audio_data):
+        """Save, transcribe, and insert text for one recording. Must run
+        under self._transcription_lock — see _process_recording."""
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
             tmp_filename = tmp_file.name
-            
+
+        try:
             # Save temporary file
             self.recorder.save_wav(audio_data, tmp_filename)
-            
+
             # Also save to main output file if configured
             if self.app_config.get('save_recordings', True):
                 output_file = self.config.audio['output_file']
                 self.recorder.save_wav(audio_data, output_file)
-            
+
             # Transcribe
             model_cfg = self.config.model
             transcribed_text, info = self.transcriber.transcribe(
@@ -194,7 +242,7 @@ class TranscriptionApp:
                 beam_size=model_cfg['beam_size'],
                 verbose=self.app_config.get('verbose', False)
             )
-            
+
             # Insert text at cursor position if enabled
             if self.text_insertion_enabled and transcribed_text:
                 print("⌨️  Inserting text at cursor position...")
@@ -213,11 +261,27 @@ class TranscriptionApp:
                 except Exception as e:
                     print(f"⚠️  Error inserting text: {e}")
 
-            # Hide visual indicator
+            if self.notifier and self.notifications_config.get('on_transcription_complete', True):
+                self.notifier.notify_transcription_complete(
+                    transcribed_text,
+                    max_preview_length=self.notifications_config.get('preview_length', 100)
+                )
+
+            # Only mark "complete" (green checkmark) on the success path —
+            # showing it after a failure below would be misleading.
             if self.visual_indicator:
                 self.visual_indicator.set_state("complete")
-                # Hide after a brief moment
-                import time
+        except Exception as e:
+            # Covers save_wav/transcribe failures (e.g. a Whisper model
+            # download failing with no internet) that previously weren't
+            # caught at all — without this, the visual indicator would be
+            # left stuck showing "processing" forever with no feedback.
+            print(f"⚠️  Error transcribing recording: {e}")
+        finally:
+            # Hide visual indicator whether transcription succeeded or not —
+            # on failure this hides straight from "processing" rather than
+            # from "complete".
+            if self.visual_indicator:
                 time.sleep(0.3)
                 self.visual_indicator.hide()
 
@@ -237,9 +301,10 @@ class TranscriptionApp:
         keyboard_cfg = self.config.keyboard
         modifier = keyboard_cfg['modifier_key'].upper()
         trigger = keyboard_cfg['trigger_key'].upper()
-        
-        print(f"Press and hold {modifier}+{trigger} to record")
-        print(f"Release {modifier}+{trigger} to stop and transcribe")
+        shortcut = modifier if self.keyboard_handler.solo_mode else f"{modifier}+{trigger}"
+
+        print(f"Press and hold {shortcut} to record")
+        print(f"Release {shortcut} to stop and transcribe")
         if self.text_insertion_enabled:
             print("📝 Transcribed text will be inserted at cursor position")
         if self.visual_indicator and self.visual_indicator.enabled:
@@ -253,16 +318,23 @@ class TranscriptionApp:
         print(f"   Device: {model_cfg['device']}, Compute: {model_cfg['compute_type']}")
         
         # Model is already loaded in Transcriber.__init__
-        print("\n✅ Ready! Press {}+{} to start recording...".format(modifier, trigger))
+        print(f"\n✅ Ready! Press {shortcut} to start recording...")
         print("-" * 60)
         
         # Start keyboard listener
         self.keyboard_handler.start()
-        
+
         try:
-            # Keep the program running
-            self.keyboard_handler.join()
+            if self.visual_indicator and self.visual_indicator.enabled:
+                # Both visual_indicator backends (Tk's WaveIndicator and the
+                # native macOS FloatingPanelIndicator built on AppKit) must
+                # run their event loop on the main thread.
+                self.visual_indicator.start_mainloop()
+            else:
+                self.keyboard_handler.join()
         except KeyboardInterrupt:
+            pass
+        finally:
             print("\n🛑 Shutting down...")
             if self.recorder.is_recording():
                 self.recorder.stop_recording()
