@@ -1,0 +1,76 @@
+name: CI
+
+# Runs the unit-test suite for every pull request targeting `main`, and
+# re-verifies `main` itself on every push (e.g. a direct push or a merge),
+# since the pull_request trigger alone never re-checks the post-merge state.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [main]
+
+# Cancel superseded runs when a PR branch is pushed again.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu covers the platform-agnostic logic; macos-14 (Apple Silicon)
+        # exercises the same suite on the platform the MLX feature targets.
+        os: [ubuntu-latest, macos-14]
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      # Only the deps the tests actually need. pynput / pyperclip / mlx-whisper
+      # are OS-bound / heavy and require accessibility permissions or model
+      # downloads, so tests/conftest.py stubs them when they're absent. Keeping
+      # them out here makes CI fast, deterministic, and headless-safe — a real
+      # `poetry install` on Linux would install the genuine pynput, which the
+      # keyboard/text-inserter tests can't run against on a headless runner.
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest numpy PyYAML
+
+      - name: Byte-compile all sources (syntax gate)
+        run: python -m compileall -q $(git ls-files '*.py')
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -v
+
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: python -m pip install ruff
+
+      - name: Run ruff
+        run: ruff check .
