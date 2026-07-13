@@ -1,5 +1,11 @@
 # Real-Time Transcription Tool - System Design
 
+> **Historical document.** Written before the MLX/Apple Silicon support, solo-key
+> trigger mode, native macOS visual indicator, and Poetry migration. Details
+> here (e.g. "Alt+W" as the default shortcut, faster-whisper-only transcription)
+> may no longer be accurate — see `README.md` and `CLAUDE.md` for the current
+> setup.
+
 ## Overview
 
 The Real-Time Transcription Tool is a modular Python application that provides push-to-talk audio transcription using OpenAI's Whisper model via `faster-whisper`. The system allows users to record audio by pressing and holding a keyboard shortcut (default: Alt+W) and automatically transcribes the audio when the keys are released. The transcribed text can be automatically inserted at the current cursor position in any application, making it a powerful dictation tool.
