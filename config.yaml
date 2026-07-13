@@ -6,10 +6,17 @@ audio:
   channels: 1  # Mono audio
   dtype: "float32"  # Audio data type
   output_file: "test_audio.wav"  # Default output file for saved recordings
+  # Substring to match against an input device name (see `python -c "import
+  # sounddevice as sd; print(sd.query_devices())"` for the exact names on
+  # this machine). Pins recording to this device regardless of which one
+  # macOS currently considers the system default — otherwise, connecting a
+  # Bluetooth headset or other mic can silently redirect recording to it.
+  # Leave "" to use the system default input device instead.
+  input_device: "MacBook Pro Microphone"
 
 # Whisper Model Settings
 model:
-  size: "base"  # Options: tiny, base, small, medium, large-v2, large-v3
+  size: "small"  # Options: tiny, base, small, medium, large-v2, large-v3
   device: "mlx"  # "cpu", "cuda" (NVIDIA GPU), or "mlx" (Apple Silicon MLX)
   compute_type: "int8"  # Options: int8, float16, float32
   language: "en"  # Language code (e.g., "en", "es", "fr", "de", "auto" for auto-detect)
@@ -17,9 +24,29 @@ model:
 
 # Keyboard Shortcut Settings
 keyboard:
-  modifier_key: "alt"  # Modifier key: "alt", "ctrl", "shift", or "super"
-  trigger_key: "w"  # Trigger key (single character)
-  # Note: Press and hold modifier+trigger to record, release to transcribe
+  # Solo-key mode (current default): hold ONE key by itself, no letter needed.
+  # modifier_key options: right_cmd, right_alt, right_ctrl, right_shift,
+  #                        left_cmd, left_alt, left_ctrl, left_shift
+  # trigger_key MUST be empty ("") for solo mode.
+  # Right-side keys are strongly recommended: holding *left* Cmd/Ctrl/etc alone
+  # happens constantly as a side effect of ordinary shortcuts (Cmd+C, Cmd+Tab,
+  # Ctrl+click...), but holding the *right* copy alone essentially never does
+  # — so nothing else reacts to it, and there's no OS-level shortcut to leak
+  # into whatever app/browser tab has focus.
+  modifier_key: "right_cmd"
+  trigger_key: ""
+
+  # Combo mode (alternative): hold modifier_key + trigger_key together.
+  # modifier_key options: alt, ctrl, shift, super, cmd (macOS Command)
+  # trigger_key: any single character, e.g. "q"
+  # NOTE: on macOS, the raw keystroke may still leak through to the
+  # frontmost app even when suppression is attempted (a known limitation —
+  # see https://github.com/moses-palmer/pynput/issues/515), which can
+  # trigger that app's own binding for the same combo (e.g. Ctrl+W closing a
+  # tab). Solo mode above avoids this problem entirely instead of relying on
+  # suppression working.
+  # modifier_key: "ctrl"
+  # trigger_key: "q"
 
 # Application Settings
 app:
@@ -30,10 +57,14 @@ app:
 # Text Insertion Settings
 text_insertion:
   enabled: true  # Enable automatic text insertion at cursor position
-  method: "direct"  # "direct" (type character by character) or "clipboard" (use Ctrl+V)
+  method: "clipboard"  # "direct" (type character by character) or "clipboard" (use Cmd+V on macOS)
   typing_delay: 0.01  # Delay between keystrokes in seconds (for reliability)
   auto_capitalize: true  # Automatically capitalize first letter
   add_period: false  # Add period at end if text doesn't end with punctuation
+
+# Visual Indicator Settings
+visual_indicator:
+  enabled: true
 
 # Desktop Notification Settings
 notifications:
