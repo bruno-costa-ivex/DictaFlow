@@ -12,13 +12,17 @@ import signal
 import sys
 import math
 import random
-import time
 
 try:
     import resource
     HAS_RESOURCE = True
 except ImportError:
     HAS_RESOURCE = False
+
+
+def _clamp01(value: float) -> float:
+    """Clamp a value into the [0.0, 1.0] range."""
+    return max(0.0, min(1.0, value))
 
 
 def _process_memory_mb():
@@ -71,9 +75,6 @@ class WaveIndicator:
         self._running = False
         self._dots_phase = 0
 
-        self._start_time = 0.0
-        self._elapsed_time = 0.0
-
         self._opacity = 0.0
         self._target_opacity = 0.0
         self._fade_speed = 0.15
@@ -87,14 +88,11 @@ class WaveIndicator:
         self._colors = {
             "recording": "#ef4444",
             "recording_glow": "#f87171",
-            "recording_dim": "#dc2626",
             "processing": "#8b5cf6",
-            "processing_glow": "#a78bfa",
             "complete": "#10b981",
             "bg": "#18181b",
             "bg_border": "#3f3f46",
             "text": "#fafafa",
-            "text_dim": "#a1a1aa",
         }
 
     def start_mainloop(self):
@@ -219,11 +217,6 @@ class WaveIndicator:
             width=1,
             tags="frame"
         )
-
-    def _format_time(self, seconds: float) -> str:
-        mins = int(seconds) // 60
-        secs = int(seconds) % 60
-        return f"{mins}:{secs:02d}"
 
     def _draw_recording_ui(self):
         if not self._canvas:
@@ -356,7 +349,7 @@ class WaveIndicator:
             self._root.after(16, self._animate)
 
     def set_audio_level(self, level: float):
-        self._target_level = max(0.0, min(1.0, level))
+        self._target_level = _clamp01(level)
 
     def show(self, state: str = "recording"):
         if not self.enabled or not self._root:
@@ -366,7 +359,6 @@ class WaveIndicator:
         self._is_visible = True
         self._phase = 0.0
         self._target_opacity = 0.95
-        self._start_time = time.time()
 
         def _show():
             if self._root:
@@ -661,7 +653,7 @@ class FloatingPanelIndicator:
             self._opacity += diff * self._fade_speed
         else:
             self._opacity = self._target_opacity
-        self._panel.setAlphaValue_(max(0.0, min(1.0, self._opacity)))
+        self._panel.setAlphaValue_(_clamp01(self._opacity))
 
         if self._is_visible or self._opacity > 0.01:
             self._apply_state_ui()
@@ -691,7 +683,7 @@ class FloatingPanelIndicator:
             self._bar_heights = [0.0] * self._NUM_BARS
 
     def set_audio_level(self, level: float):
-        self._target_level = max(0.0, min(1.0, level))
+        self._target_level = _clamp01(level)
 
     def show(self, state: str = "recording"):
         if not self.enabled:
