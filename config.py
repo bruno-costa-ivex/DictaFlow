@@ -73,32 +73,25 @@ class Config:
         model_cfg = self._require_section('model', ['size', 'device', 'compute_type'])
         self._require_section('keyboard', ['modifier_key', 'trigger_key'])
 
-        # Validate model size
-        valid_sizes = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
-        if model_cfg['size'] not in valid_sizes:
-            raise ValueError(
-                f"Invalid model size: {model_cfg['size']}\n"
-                f"Valid options: {', '.join(valid_sizes)}"
-            )
-
-        # Validate device
-        valid_devices = ["cpu", "cuda", "mlx"]
-        if model_cfg['device'] not in valid_devices:
-            raise ValueError(
-                f"Invalid device: {model_cfg['device']}\n"
-                f"Valid options: {', '.join(valid_devices)}"
-            )
+        self._validate_choice(model_cfg['size'], "model size",
+                              ["tiny", "base", "small", "medium", "large-v2", "large-v3"])
+        self._validate_choice(model_cfg['device'], "device", ["cpu", "cuda", "mlx"])
 
         # compute_type is not used by mlx — skip value validation for that
         # device (the key must still be present, checked above, since
         # Transcriber() is always constructed with a compute_type argument).
         if model_cfg['device'] != "mlx":
-            valid_compute_types = ["int8", "float16", "float32"]
-            if model_cfg['compute_type'] not in valid_compute_types:
-                raise ValueError(
-                    f"Invalid compute type: {model_cfg['compute_type']}\n"
-                    f"Valid options: {', '.join(valid_compute_types)}"
-                )
+            self._validate_choice(model_cfg['compute_type'], "compute type",
+                                  ["int8", "float16", "float32"])
+
+    @staticmethod
+    def _validate_choice(value, label: str, valid) -> None:
+        """Raise a clear ValueError if `value` isn't one of `valid`."""
+        if value not in valid:
+            raise ValueError(
+                f"Invalid {label}: {value}\n"
+                f"Valid options: {', '.join(valid)}"
+            )
     
     @property
     def audio(self) -> Dict[str, Any]:

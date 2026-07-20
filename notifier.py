@@ -25,7 +25,6 @@ class Notifier:
     WAVE_RECORDING = "  ▁▂▃▄▅▆▇█▇▆▅▄▃▂▁  "
     WAVE_PROCESSING = "  ░▒▓█▓▒░░▒▓█▓▒░  "
     WAVE_COMPLETE = "  ▂▄▆█▆▄▂ ▂▄▆█▆▄▂  "
-    WAVE_IDLE = "  ▁▁▂▁▁▂▁▁▂▁▁▂▁▁  "
 
     def __init__(self, enabled: bool = True):
         """
@@ -151,14 +150,8 @@ class Notifier:
             urgency="low"
         )
 
-    def notify_transcription_complete(self, text: str = "", max_preview_length: int = 100):
-        """
-        Show notification when transcription completes with visual wave.
-
-        Args:
-            text: The transcribed text (unused, kept for API compatibility)
-            max_preview_length: Unused, kept for API compatibility
-        """
+    def notify_transcription_complete(self):
+        """Show notification when transcription completes with visual wave."""
         self._send_notification(
             title="DictaFlow",
             message=self.WAVE_COMPLETE,

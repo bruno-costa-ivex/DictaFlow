@@ -262,10 +262,7 @@ class TranscriptionApp:
                     print(f"⚠️  Error inserting text: {e}")
 
             if self.notifier and self.notifications_config.get('on_transcription_complete', True):
-                self.notifier.notify_transcription_complete(
-                    transcribed_text,
-                    max_preview_length=self.notifications_config.get('preview_length', 100)
-                )
+                self.notifier.notify_transcription_complete()
 
             # Only mark "complete" (green checkmark) on the success path —
             # showing it after a failure below would be misleading.

@@ -9,6 +9,16 @@ import io
 from typing import Tuple
 
 
+@contextlib.contextmanager
+def _quiet_output(verbose: bool):
+    """Silence the chatty whisper backends' stdout/stderr unless verbose."""
+    if verbose:
+        yield
+    else:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            yield
+
+
 # mlx-community HuggingFace repo mapping for each model size
 _MLX_MODEL_REPOS = {
     "tiny": "mlx-community/whisper-tiny-mlx",
@@ -134,14 +144,7 @@ class Transcriber:
         if audio is None:
             audio = audio_file  # non-standard format — let mlx-whisper use ffmpeg
 
-        if not verbose:
-            stdout_redirect = contextlib.redirect_stdout(io.StringIO())
-            stderr_redirect = contextlib.redirect_stderr(io.StringIO())
-        else:
-            stdout_redirect = contextlib.nullcontext()
-            stderr_redirect = contextlib.nullcontext()
-
-        with stdout_redirect, stderr_redirect:
+        with _quiet_output(verbose):
             result = mlx_whisper.transcribe(
                 audio,
                 path_or_hf_repo=self._mlx_repo,
@@ -166,14 +169,7 @@ class Transcriber:
         self, audio_file: str, language: str = "en", beam_size: int = 5, verbose: bool = False
     ) -> Tuple[str, dict]:
         """Transcribe using faster-whisper (CPU/CUDA)."""
-        if not verbose:
-            stdout_redirect = contextlib.redirect_stdout(io.StringIO())
-            stderr_redirect = contextlib.redirect_stderr(io.StringIO())
-        else:
-            stdout_redirect = contextlib.nullcontext()
-            stderr_redirect = contextlib.nullcontext()
-
-        with stdout_redirect, stderr_redirect:
+        with _quiet_output(verbose):
             try:
                 segments, info = self.model.transcribe(
                     audio_file,
