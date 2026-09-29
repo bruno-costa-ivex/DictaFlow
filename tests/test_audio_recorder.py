@@ -7,6 +7,8 @@ start_recording() itself (which touches real audio hardware) is not exercised
 here.
 """
 
+import threading
+import time
 import wave
 
 import numpy as np
@@ -133,6 +135,7 @@ def test_save_wav_writes_expected_header_and_data(tmp_path):
 def test_construction_does_not_touch_real_hardware(input_device, monkeypatch):
     """Guard against a future change accidentally calling start_recording()
     (or otherwise opening a stream) from __init__."""
+
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("InputStream must not be created during __init__")
 
@@ -140,3 +143,66 @@ def test_construction_does_not_touch_real_hardware(input_device, monkeypatch):
     monkeypatch.setattr(audio_recorder_module.sd, "query_devices", _fake_devices)
 
     AudioRecorder(input_device=input_device)
+
+
+# --- Hung CoreAudio stop ------------------------------------------------------
+
+
+class _HangingStream:
+    """Stands in for an sd.InputStream whose stop() deadlocks inside CoreAudio."""
+
+    def __init__(self):
+        self.release = threading.Event()
+
+    def stop(self):
+        self.release.wait()
+
+    def close(self):
+        pass
+
+
+def _recording_recorder(stream, monkeypatch):
+    monkeypatch.setattr(AudioRecorder, "STOP_TIMEOUT_S", 0.2)
+    recorder = AudioRecorder()
+    recorder.recording = True
+    recorder.stream = stream
+    recorder.audio_frames = [np.full((4, 1), 0.5, dtype=np.float32)]
+    return recorder
+
+
+def test_hung_stream_stop_still_returns_audio_and_flags_it(monkeypatch):
+    stream = _HangingStream()
+    recorder = _recording_recorder(stream, monkeypatch)
+
+    audio = recorder.stop_recording()
+    stream.release.set()
+
+    assert audio is not None and len(audio) == 4
+    assert recorder.stream_hung is True
+
+
+def test_hung_stream_stop_does_not_hold_the_lock(monkeypatch):
+    """start_recording() runs on the keyboard listener's thread; if the lock
+    were held while stop() hangs, the next hotkey press would freeze it."""
+    stream = _HangingStream()
+    recorder = _recording_recorder(stream, monkeypatch)
+    stopper = threading.Thread(target=recorder.stop_recording, daemon=True)
+    stopper.start()
+    time.sleep(0.05)  # stop() is now blocked inside the hung stream
+
+    acquired = recorder.lock.acquire(timeout=0.1)
+    if acquired:
+        recorder.lock.release()
+    stream.release.set()
+
+    assert acquired
+
+
+def test_healthy_stream_stop_does_not_flag_a_hang(monkeypatch):
+    stream = _HangingStream()
+    stream.release.set()
+    recorder = _recording_recorder(stream, monkeypatch)
+
+    recorder.stop_recording()
+
+    assert recorder.stream_hung is False
