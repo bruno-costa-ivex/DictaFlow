@@ -50,6 +50,7 @@ def make_app(
 
     app.recorder = MagicMock()
     app.recorder.stop_recording.return_value = np.array([1, 2, 3], dtype=np.int16)
+    app.recorder.stream_hung = False
 
     app.transcriber = MagicMock()
     if transcribe_side_effect is not None:
@@ -124,6 +125,30 @@ def test_process_recording_skips_transcription_when_no_audio(stop_recording_valu
     app._process_recording()
 
     app.transcriber.transcribe.assert_not_called()
+
+
+# --- Restart after a hung audio stream ---------------------------------------
+
+def test_hung_audio_stream_transcribes_then_restarts_process(monkeypatch):
+    app = make_app()
+    app.recorder.stream_hung = True
+    execv = MagicMock()
+    monkeypatch.setattr(os, "execv", execv)
+
+    app._process_recording()
+
+    app.transcriber.transcribe.assert_called_once()
+    execv.assert_called_once()
+
+
+def test_healthy_audio_stream_does_not_restart_process(monkeypatch):
+    app = make_app()
+    execv = MagicMock()
+    monkeypatch.setattr(os, "execv", execv)
+
+    app._process_recording()
+
+    execv.assert_not_called()
 
 
 # --- Non-blocking dispatch ---------------------------------------------------

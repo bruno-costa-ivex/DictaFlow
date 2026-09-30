@@ -14,6 +14,10 @@ from typing import Optional
 class AudioRecorder:
     """Thread-safe audio recorder."""
 
+    # CoreAudio's AudioOutputUnitStop can deadlock forever inside the HAL, so
+    # stopping the stream is bounded rather than waited on indefinitely.
+    STOP_TIMEOUT_S = 3.0
+
     def __init__(self, sample_rate: int = 16000, channels: int = 1, on_level_update=None, input_device: str = ""):
         """
         Initialize audio recorder.
@@ -34,6 +38,7 @@ class AudioRecorder:
         self.recording = False
         self.audio_frames = []
         self.stream = None
+        self.stream_hung = False
         self.lock = threading.Lock()
         self._on_level_update = on_level_update
         self._current_level = 0.0
@@ -101,25 +106,41 @@ class AudioRecorder:
         with self.lock:
             if not self.recording:
                 return None
-            
+
             self.recording = False
-            
-            if self.stream:
-                self.stream.stop()
-                self.stream.close()
-                self.stream = None
-            
-            print("⏹️  Recording stopped.")
-            
-            if not self.audio_frames:
-                return None
-            
-            # Convert to int16
-            audio_data = np.concatenate(self.audio_frames, axis=0)
-            audio_data = (audio_data * 32767).astype(np.int16)
-            
-            return audio_data
-    
+            stream, self.stream = self.stream, None
+            audio_frames = self.audio_frames
+
+        # Stopped outside the lock: start_recording() runs on the keyboard
+        # listener's thread and takes the same lock, so a hung stop() here
+        # would otherwise freeze the hotkey on its next press.
+        if stream:
+            self._close_stream(stream)
+
+        print("⏹️  Recording stopped.")
+
+        if not audio_frames:
+            return None
+
+        # Convert to int16
+        audio_data = np.concatenate(audio_frames, axis=0)
+        audio_data = (audio_data * 32767).astype(np.int16)
+
+        return audio_data
+
+    def _close_stream(self, stream):
+        """Stop and close a stream, abandoning it if CoreAudio hangs."""
+        def close():
+            stream.stop()
+            stream.close()
+
+        closer = threading.Thread(target=close, daemon=True)
+        closer.start()
+        closer.join(self.STOP_TIMEOUT_S)
+        if closer.is_alive():
+            self.stream_hung = True
+            print("⚠️  Audio stream did not stop (CoreAudio hang), abandoning it.")
+
     def is_recording(self) -> bool:
         """Check if currently recording."""
         return self.recording

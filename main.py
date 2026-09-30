@@ -212,12 +212,22 @@ class TranscriptionApp:
         """Process the recorded audio: save and transcribe."""
         audio_data = self.recorder.stop_recording()
 
-        if audio_data is None or len(audio_data) == 0:
-            print("⚠️  No audio recorded.")
-            return
+        try:
+            if audio_data is None or len(audio_data) == 0:
+                print("⚠️  No audio recorded.")
+                return
 
-        with self._transcription_lock:
-            self._transcribe_and_insert(audio_data)
+            with self._transcription_lock:
+                self._transcribe_and_insert(audio_data)
+        finally:
+            if self.recorder.stream_hung:
+                self._restart()
+
+    def _restart(self):
+        """Re-exec the process. A CoreAudio hang can't be recovered from
+        in-process, and the next recording would likely hang on it too."""
+        print("🔄 Restarting to recover from the audio hang...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def _transcribe_and_insert(self, audio_data):
         """Save, transcribe, and insert text for one recording. Must run
