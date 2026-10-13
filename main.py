@@ -6,6 +6,7 @@ Press and hold the configured shortcut (default: Right Command, held alone) to r
 
 import tempfile
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -224,10 +225,13 @@ class TranscriptionApp:
                 self._restart()
 
     def _restart(self):
-        """Re-exec the process. A CoreAudio hang can't be recovered from
-        in-process, and the next recording would likely hang on it too."""
+        """Replace this process with a fresh one. A CoreAudio hang can't be
+        recovered from in-process, and the next recording would likely hang
+        on it too. Spawns rather than os.execv: a re-exec'd process kept its
+        overlay window alpha'd in but never on screen."""
         print("🔄 Restarting to recover from the audio hang...")
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        subprocess.Popen(sys.orig_argv, start_new_session=True)
+        os._exit(0)
 
     def _transcribe_and_insert(self, audio_data):
         """Save, transcribe, and insert text for one recording. Must run
