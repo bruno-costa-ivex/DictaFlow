@@ -9,6 +9,7 @@ orchestration code in main.py itself.
 """
 
 import os
+import sys
 import threading
 import time
 
@@ -16,6 +17,7 @@ import numpy as np
 import pytest
 from unittest.mock import MagicMock
 
+import main as main_module
 from main import TranscriptionApp
 
 
@@ -129,26 +131,34 @@ def test_process_recording_skips_transcription_when_no_audio(stop_recording_valu
 
 # --- Restart after a hung audio stream ---------------------------------------
 
-def test_hung_audio_stream_transcribes_then_restarts_process(monkeypatch):
+def test_hung_audio_stream_transcribes_then_spawns_fresh_process(monkeypatch):
+    """A fresh process, not os.execv: a re-exec'd process kept its overlay
+    window alpha'd in but never on screen (lost its window-server session)."""
     app = make_app()
     app.recorder.stream_hung = True
-    execv = MagicMock()
+    popen, exit_, execv = MagicMock(), MagicMock(), MagicMock()
+    monkeypatch.setattr(main_module.subprocess, "Popen", popen)
+    monkeypatch.setattr(os, "_exit", exit_)
     monkeypatch.setattr(os, "execv", execv)
 
     app._process_recording()
 
     app.transcriber.transcribe.assert_called_once()
-    execv.assert_called_once()
+    popen.assert_called_once()
+    assert popen.call_args.args[0][1:] == sys.orig_argv[1:]
+    assert popen.call_args.kwargs["start_new_session"] is True
+    exit_.assert_called_once_with(0)
+    execv.assert_not_called()
 
 
 def test_healthy_audio_stream_does_not_restart_process(monkeypatch):
     app = make_app()
-    execv = MagicMock()
-    monkeypatch.setattr(os, "execv", execv)
+    popen = MagicMock()
+    monkeypatch.setattr(main_module.subprocess, "Popen", popen)
 
     app._process_recording()
 
-    execv.assert_not_called()
+    popen.assert_not_called()
 
 
 # --- Non-blocking dispatch ---------------------------------------------------
